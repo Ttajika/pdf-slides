@@ -33,6 +33,7 @@
        role,             // 任意（pdf-slides）: 'presenter' | 'viewer'（URL パラメータより優先）
        canPresent,       // 任意（pdf-slides）: () => true ならログインなしで配信できる
        viewerUrl,        // 任意（pdf-slides）: (withRec) => 受信用 URL（QR に出す。秘密鍵を含めないこと）
+       showShare,        // 任意（pdf-slides）: () => QR ボタンで開く画面（省略時は受信用 URL の画面）
 
      });
    ════════════════════════════════════════════════════════════════════════ */
@@ -446,7 +447,7 @@
     const qr = document.createElement('button');
     qr.className = 'nav-btn'; qr.id = 'slQrBtn'; qr.style.fontSize = '11px';
     qr.innerHTML = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em" aria-hidden="true"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>'; qr.title = '受信用 URL / QR を表示';
-    qr.onclick = showViewerUrl;
+    qr.onclick = () => adapter.showShare ? adapter.showShare() : showViewerUrl();   // pdf-slides: 共有リンクでは共有・管理画面
     const rb = document.createElement('button');
     rb.className = 'nav-btn'; rb.id = 'slPresRecBtn'; rb.style.fontSize = '11px'; rb.style.display = 'none';
     rb.onclick = presRecToggle;
