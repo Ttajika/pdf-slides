@@ -24,6 +24,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="js/slide-sync.js"></script>
 <script src="js/slide-live.js"></script>
+<script src="js/slide-share.js"></script>
 <style>
 :root { --accent:#e94560; --bar:#1a1a2e; --bg:#eef0f3; --ink:#1f2937; --muted:#6b7280; }
 * { box-sizing:border-box; }
@@ -84,6 +85,19 @@ body.drawing #stage { touch-action:none; }
 #loading { position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); background:rgba(26,26,46,.9); color:#fff;
   padding:10px 18px; border-radius:8px; font-size:14px; display:none; z-index:50; }
 #loading.show { display:block; }
+#shareOverlay { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
+#shareOverlay.open { display:flex; }
+.sh-modal { background:#fff; color:#1f2937; border-radius:12px; padding:20px; width:min(420px,92vw); max-height:92vh; overflow:auto;
+  box-shadow:0 20px 50px rgba(0,0,0,.3); font-size:14px; line-height:1.6; -webkit-user-select:text; user-select:text; }
+.sh-modal h3 { margin:0 0 10px; font-size:16px; }
+.sh-label { font-size:12.5px; color:var(--muted); margin-top:12px; }
+.sh-url { font-family:ui-monospace,Menlo,monospace; font-size:12px; word-break:break-all; background:#f3f4f6; padding:8px; border-radius:6px; margin:4px 0; }
+.sh-qr { text-align:center; } .sh-qr svg { width:150px; height:150px; }
+.sh-btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+.sh-btns button, .sh-file { flex:1; font:inherit; font-size:14px; padding:8px 12px; border-radius:8px; cursor:pointer; text-align:center;
+  border:1px solid #d1d5db; background:#f3f4f6; color:#1f2937; }
+.sh-btns button.danger { background:#fff; color:#dc2626; border-color:#fca5a5; }
+.sh-msg { margin-top:8px; font-size:13px; min-height:1.3em; }
 @media (max-width: 760px) {
   .topbar-title { display:none; }
   .nav-sel { max-width:110px; }
@@ -171,7 +185,8 @@ function loading(msg) { const el = $('loading'); el.textContent = msg; el.classL
 const deckName = name => name.replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|#%&\s]+/g, '_');
 
 /* ── PDF を開く ──────────────────────────────────────────────────────────── */
-async function openPdf(src, fileName, fromRepo) {
+// live: null（配信しない）| { storageKey?, ...SlideLive に渡す追加の adapter }
+async function openPdf(src, fileName, live) {
   $('opener').hidden = true;
   loading('PDF を読み込み中…');
   try {
@@ -185,7 +200,7 @@ async function openPdf(src, fileName, fromRepo) {
   deck = deckName(fileName);
   document.title = fileName.replace(/\.pdf$/i, '');
   $('title').textContent = document.title;
-  STORAGE_KEY = 'pdfslides_' + deck;
+  STORAGE_KEY = (live && live.storageKey) || 'pdfslides_' + deck;
   SECTIONS = await readOutline();
   fillSections();
   loadLocal();
@@ -198,16 +213,11 @@ async function openPdf(src, fileName, fromRepo) {
   $('stage').hidden = false;
   sizeStage();
   showSlide(current);
-  if (!fromRepo) return;   // 手元の PDF は配信しない（受信側が同じ PDF を開けないため）
+  if (!live) return;   // 手元の PDF は配信しない（受信側が同じ PDF を開けないため）
 
-  // ログイン（配信者の確認だけに使う。書き込みはクラウドに保存しない）
-  if (window.SlideSync) SlideSync.init({
-    storageKey: STORAGE_KEY, syncData: false,
-    getCanvas: () => ({ width: 1, height: 1 }),
-    getState: () => ({}), applyState: () => {}, saveLocal: () => {}, refresh: () => {},
-  });
-  // ライブ配信（?presenter=1 / ?live=CODE / &rec=1 のときだけ有効）
-  if (window.SlideLive) SlideLive.init({
+  // ライブ配信（GitHub の PDF：?presenter=1 / ?live=CODE / &rec=1 のとき。共有リンク：常に）
+  const { storageKey, ...extra } = live;
+  if (window.SlideLive) SlideLive.init(Object.assign({
     pageKey: STORAGE_KEY,
     getCanvas: () => $('drawCanvas'),
     getBoardCanvas: () => $('boardCanvas'),
@@ -222,7 +232,18 @@ async function openPdf(src, fileName, fromRepo) {
     lineScale: w => w / REF_W,
     boardLineScale: w => w / BREF_W,
     recName: deck,
-  });
+  }, extra));
+}
+
+// PDF だけ読み直す（差し替え後。配信・書き込みはそのまま）
+async function reloadPdf(src) {
+  loading('PDF を読み込み中…');
+  try { pdf = await pdfjsLib.getDocument(src).promise; }
+  catch (e) { loading(''); alert('PDF を開けませんでした：' + (e && e.message || e)); return; }
+  N = pdf.numPages;
+  SECTIONS = await readOutline(); fillSections();
+  loading('');
+  showSlide(Math.min(current, N - 1));
 }
 
 // PDF のしおり（Beamer の \section など）→ セクション
@@ -530,13 +551,107 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('pagehide', saveLocal);
 
+/* ── 共有リンク（?s=ID）／発表者リンク（?s=ID&k=秘密鍵）────────────────── */
+let share = null;   // { id, key, title, expires }
+async function openShared(id, key) {
+  loading('読み込み中…');
+  let info = null, isPresenter = false;
+  try {
+    info = await SlideShare.get(id);
+    if (info && key) { info.expires = await SlideShare.check(id, key); isPresenter = true; }
+  } catch (e) {
+    if (!info) { loading(''); showGone(e.message); return; }
+    alert(e.message + '\n閲覧用として開きます。');
+  }
+  if (!info) { loading(''); showGone('このリンクは期限切れか、削除されています。'); return; }
+  share = { id, key: isPresenter ? key : null, title: info.title, expires: info.expires };
+  if (isPresenter) {
+    // この端末に発表者リンクの控えを残す（upload.html の一覧に出る）
+    SlideShare.remember({ id, key, title: info.title, expires: info.expires });
+    injectSharePanel();
+  }
+  const L = SlideShare.links(id, null);
+  await openPdf(info.url, (info.title || 'slides') + '.pdf', {
+    storageKey: 'pdfslides_s_' + id,
+    role: isPresenter ? 'presenter' : 'viewer',
+    canPresent: () => isPresenter,
+    viewerUrl: withRec => withRec ? L.record : L.share,
+  });
+}
+function showGone(msg) {
+  const op = $('opener'); op.hidden = false;
+  op.querySelector('.box').innerHTML = `<h1>スライドを開けません</h1><div>${msg.replace(/</g, '&lt;')}</div>
+    <div class="note">発表者に新しいリンクをもらってください。</div>`;
+}
+function injectSharePanel() {
+  const nav = document.querySelector('.topbar-nav');
+  const b = document.createElement('button');
+  b.className = 'nav-btn'; b.id = 'shareBtn'; b.style.fontSize = '11px'; b.textContent = '共有・管理';
+  b.onclick = openSharePanel;
+  nav.appendChild(b);
+  const ov = document.createElement('div');
+  ov.id = 'shareOverlay';
+  ov.innerHTML = `<div class="sh-modal">
+    <h3>共有・管理</h3>
+    <div class="sh-label">共有リンク（参加者向け。配信中はそのまま追従します）</div>
+    <div class="sh-url" id="shUrl"></div>
+    <div class="sh-btns"><button id="shCopy">コピー</button></div>
+    <div class="sh-qr" id="shQr"></div>
+    <div class="sh-label">有効期限：<strong id="shExp"></strong></div>
+    <div class="sh-btns"><button id="shExtend">今から 30 日に延長</button></div>
+    <div class="sh-label">PDF を差し替える（共有リンクはそのまま。開いている人は再読み込みで新しい版になります）</div>
+    <div class="sh-btns"><label class="sh-file">PDF を選ぶ<input type="file" id="shFile" accept="application/pdf,.pdf" hidden></label></div>
+    <div class="sh-msg" id="shMsg"></div>
+    <div class="sh-btns" style="margin-top:16px;">
+      <button id="shDelete" class="danger">削除する</button><button id="shClose">閉じる</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+  const msg = (t, err) => { $('shMsg').textContent = t || ''; $('shMsg').style.color = err ? '#dc2626' : ''; };
+  $('shClose').onclick = () => ov.classList.remove('open');
+  $('shCopy').onclick = async () => { await SlideShare.copy(SlideShare.links(share.id).share); msg('コピーしました'); };
+  $('shExtend').onclick = async () => {
+    try { share.expires = await SlideShare.extend(share.id, share.key); fillSharePanel(); msg('延長しました');
+      SlideShare.remember({ id: share.id, key: share.key, title: share.title, expires: share.expires }); }
+    catch (e) { msg(e.message, true); }
+  };
+  $('shFile').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    msg('アップロード中…');
+    try {
+      await SlideShare.replace(share.id, share.key, f, '');
+      const info = await SlideShare.get(share.id);
+      msg('差し替えました'); await reloadPdf(info.url);
+    } catch (err) { msg(err.message, true); }
+  };
+  $('shDelete').onclick = async () => {
+    if (!confirm('このスライドを削除しますか？\n共有リンク・発表者リンクとも使えなくなります。')) return;
+    try { await SlideShare.remove(share.id, share.key); SlideShare.forget(share.id); alert('削除しました'); location.href = './upload.html'; }
+    catch (e) { msg(e.message, true); }
+  };
+}
+function fillSharePanel() {
+  const url = SlideShare.links(share.id).share;
+  $('shUrl').textContent = url;
+  $('shQr').innerHTML = SlideShare.qrSvg(url);
+  $('shExp').textContent = SlideShare.fmtDate(share.expires);
+}
+function openSharePanel() { fillSharePanel(); $('shMsg').textContent = ''; $('shareOverlay').classList.add('open'); }
+
 /* ── 起動 ───────────────────────────────────────────────────────────────── */
 (function start() {
   if (!window.pdfjsLib) { $('opener').hidden = false; alert('PDF.js を読み込めませんでした（ネットワークを確認してください）'); return; }
-  const file = params.get('file');
+  const file = params.get('file'), sid = params.get('s');
+  const syncInit = loginButton => window.SlideSync && SlideSync.init({
+    storageKey: 'pdfslides_login', syncData: false, loginButton,   // ログインは配信者の確認だけ。書き込みは同期しない
+    getCanvas: () => ({ width: 1, height: 1 }),
+    getState: () => ({}), applyState: () => {}, saveLocal: () => {}, refresh: () => {},
+  });
+  if (sid) { syncInit(false); openShared(sid, params.get('k')); return; }
   if (file) {
     if (/^[a-z]+:|^\/\/|\.\./i.test(file)) { alert('このリポジトリ内の PDF だけ開けます'); $('opener').hidden = false; return; }
-    openPdf(file, file.split('/').pop(), true); return;
+    syncInit(params.has('presenter'));
+    openPdf(file, file.split('/').pop(), {}); return;
   }
   const op = $('opener'); op.hidden = false;
   const openLocal = async f => { if (f) openPdf({ data: new Uint8Array(await f.arrayBuffer()) }, f.name, false); };

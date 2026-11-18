@@ -30,6 +30,9 @@
        lineScale,        // 任意（pdf-slides）: (canvasWidth) => 手書きの線の太さの倍率
        boardLineScale,   // 任意（pdf-slides）: (canvasWidth) => 板書の線の太さの倍率
        recName,          // 任意（pdf-slides）: 録画ファイル名の先頭
+       role,             // 任意（pdf-slides）: 'presenter' | 'viewer'（URL パラメータより優先）
+       canPresent,       // 任意（pdf-slides）: () => true ならログインなしで配信できる
+       viewerUrl,        // 任意（pdf-slides）: (withRec) => 受信用 URL（QR に出す。秘密鍵を含めないこと）
 
      });
    ════════════════════════════════════════════════════════════════════════ */
@@ -283,8 +286,12 @@
   function presenterStart() {
     if (live) return;
     if (!SlideSync.isConfigured || !SlideSync.isConfigured()) { alert('クラウド同期（Supabase）が設定されていないため配信できません。'); return; }
-    if (!SlideSync.user()) { pendingStart = true; SlideSync.openModal(); return; }
-    if (!isAllowed()) { alert('このアカウントには配信権限がありません。'); return; }
+    if (adapter.canPresent) {          // pdf-slides: 発表者リンクで開いたときはログイン不要
+      if (!adapter.canPresent()) { alert('このリンクでは配信できません。'); return; }
+    } else {
+      if (!SlideSync.user()) { pendingStart = true; SlideSync.openModal(); return; }
+      if (!isAllowed()) { alert('このアカウントには配信権限がありません。'); return; }
+    }
     resetSent();
     if (!connect('presenter', () => { sendFull(); })) return;
     live = true;
@@ -456,6 +463,7 @@
 
   // pdf-slides: ?file= などページ固有のパラメータは残し、役割のパラメータだけ入れ替える
   function viewerUrl(withRec) {
+    if (adapter.viewerUrl) return adapter.viewerUrl(withRec);
     const q = new URLSearchParams(location.search);
     q.delete('presenter'); q.delete('rec'); q.set('live', code);
     if (withRec) q.set('rec', '1');
@@ -1050,7 +1058,8 @@
   // ═══════════════════════════════════════════════════════════════════════
   SL.init = function (adapterArg) {
     adapter = adapterArg;
-    if (params.has('presenter')) role = 'presenter';
+    if (adapter.role) role = adapter.role;   // pdf-slides: 共有リンク（?s=）ではページ側が決める
+    else if (params.has('presenter')) role = 'presenter';
     else if (params.has('live')) role = 'viewer';
     else return;   // 通常の学生表示：何もしない
     if (!window.SlideSync) { console.warn('[slide-live] slide-sync.js が必要です'); return; }

@@ -331,7 +331,7 @@
     adapter = adapterArg;
     injectStyles();
     injectModal();
-    injectButton();
+    if (adapter.loginButton !== false) injectButton();   // pdf-slides: 共有リンクではログインボタンを出さない
     if (adapter.syncData === false) {   // pdf-slides: ログインだけ使う（配信者の確認用）。データは同期しない
       const m = document.querySelector('#ssLoginView > div');
       if (m) m.textContent = 'iPad から配信するときだけログインが必要です（受信側は不要）。';

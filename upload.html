@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDFをアップロード</title>
+<!--
+  upload.html — PDF をアップロードして「共有リンク」と「発表者リンク」を発行する
+  共有リンク（viewer.html?s=ID）は参加者に配る。当日はそのまま配信に追従する。
+  発表者リンク（…&k=秘密鍵）は配信・差し替え・延長・削除ができる。人に見せないこと。
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="js/slide-sync.js"></script>
+<script src="js/slide-share.js"></script>
+<style>
+:root { --accent:#e94560; --bar:#1a1a2e; --bg:#eef0f3; --ink:#1f2937; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --field:#fff; --warn:#b45309; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#111827; --ink:#e5e7eb; --muted:#9ca3af; --card:#1f2937; --line:#374151; --field:#111827; --warn:#fbbf24; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif; }
+header { background:var(--bar); color:#fff; padding:14px 16px; display:flex; gap:12px; align-items:center; }
+header h1 { margin:0; font-size:18px; flex:1; }
+header a { color:#fff; opacity:.8; font-size:13px; }
+main { max-width:760px; margin:0 auto; padding:16px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+.card h2 { font-size:15px; margin:0 0 10px; }
+label.f { display:block; font-size:12.5px; color:var(--muted); margin:10px 0 4px; }
+input[type=text], input[type=password] { width:100%; font:inherit; font-size:15px; padding:8px 10px; border:1px solid var(--line);
+  border-radius:8px; background:var(--field); color:inherit; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.small { font-size:12.5px; color:var(--muted); line-height:1.6; }
+#drop { border:2px dashed var(--line); border-radius:10px; padding:22px 12px; text-align:center; cursor:pointer; margin-top:12px; }
+#drop.drag { border-color:var(--accent); }
+#drop strong { word-break:break-all; }
+button, .btn { font:inherit; font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--line);
+  background:transparent; color:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
+button:disabled { opacity:.5; cursor:default; }
+#status { margin-top:10px; font-size:14px; min-height:1.4em; }
+#status.err { color:#dc2626; }
+.link { font-family:ui-monospace,Menlo,monospace; font-size:12px; word-break:break-all; background:rgba(127,127,127,.12);
+  padding:8px; border-radius:6px; margin:4px 0 6px; user-select:all; }
+.warn { color:var(--warn); font-size:12.5px; }
+.qr { text-align:center; margin:8px 0; }
+.qr svg { width:160px; height:160px; background:#fff; border-radius:6px; }
+.mine-item { border-top:1px solid var(--line); padding:10px 0; }
+.mine-item:first-child { border-top:none; }
+.mine-item .t { font-weight:700; word-break:break-all; color:var(--ink); }
+.mine-item.dead .t { text-decoration:line-through; color:var(--muted); }
+</style>
+</head>
+<body>
+<header><h1>PDFをアップロード</h1><a href="./">一覧へ</a></header>
+<main>
+  <div class="card">
+    <h2>新しくアップロード</h2>
+    <label class="f" for="pw">アップロード用パスワード</label>
+    <input type="password" id="pw" autocomplete="current-password">
+    <label class="row small" style="margin-top:6px;"><input type="checkbox" id="pwKeep"> この端末に覚えておく</label>
+    <div id="drop">PDF をここにドロップ、またはクリックして選ぶ（50MB まで）</div>
+    <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+    <label class="f" for="title">題名</label>
+    <input type="text" id="title" placeholder="ファイル名から自動で入ります">
+    <div class="row" style="margin-top:12px;">
+      <button class="primary" id="go">アップロードしてリンクを発行</button>
+    </div>
+    <div id="status"></div>
+    <div class="small" style="margin-top:8px;">リンクの有効期限は 30 日です（発表者リンクから延長できます）。</div>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <h2>発行しました</h2>
+    <div><strong>共有リンク</strong>（参加者に配る。当日はそのまま配信に追従します）</div>
+    <div class="link" id="rShare"></div>
+    <div class="row"><button data-copy="rShare">コピー</button><a class="btn" id="rShareOpen" target="_blank">開く</a></div>
+    <div class="qr" id="rQr"></div>
+    <div style="margin-top:12px;"><strong>発表者リンク</strong>（配信・差し替え・延長・削除ができます）</div>
+    <div class="warn">このリンクは人に渡さないでください。この端末にも控えを残します。</div>
+    <div class="link" id="rPres"></div>
+    <div class="row"><button data-copy="rPres">コピー</button><a class="btn" id="rPresOpen" target="_blank">開く</a></div>
+  </div>
+
+  <div class="card">
+    <h2>この端末でアップロードしたもの</h2>
+    <div id="mine" class="small">まだありません。</div>
+  </div>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+
+SlideSync.init({ storageKey: 'pdfslides_upload', syncData: false, loginButton: false,
+  getCanvas: () => ({ width: 1, height: 1 }), getState: () => ({}), applyState: () => {}, saveLocal: () => {} });
+
+let file = null;
+function setFile(f) {
+  if (!f) return;
+  file = f;
+  $('drop').innerHTML = `<strong>${esc(f.name)}</strong>（${(f.size / 1048576).toFixed(1)} MB）<br><span class="small">クリックで選び直す</span>`;
+  if (!$('title').value.trim()) $('title').value = f.name.replace(/\.pdf$/i, '');
+}
+$('drop').onclick = () => $('file').click();
+$('file').onchange = e => setFile(e.target.files[0]);
+$('drop').addEventListener('dragover', e => { e.preventDefault(); $('drop').classList.add('drag'); });
+$('drop').addEventListener('dragleave', () => $('drop').classList.remove('drag'));
+$('drop').addEventListener('drop', e => { e.preventDefault(); $('drop').classList.remove('drag'); setFile(e.dataTransfer.files[0]); });
+
+const saved = lsGet('pdfslides_pw');
+if (saved) { $('pw').value = saved; $('pwKeep').checked = true; }
+
+function status(msg, err) { $('status').textContent = msg || ''; $('status').className = err ? 'err' : ''; }
+
+$('go').onclick = async () => {
+  const pw = $('pw').value, title = $('title').value.trim() || (file ? file.name.replace(/\.pdf$/i, '') : '');
+  if (!pw) { status('パスワードを入力してください', true); return; }
+  $('go').disabled = true; status('アップロード中…');
+  try {
+    const r = await SlideShare.create(pw, title, file);
+    lsSet('pdfslides_pw', $('pwKeep').checked ? pw : null);
+    const exp = await SlideShare.check(r.id, r.key);
+    SlideShare.remember({ id: r.id, key: r.key, title, expires: exp });
+    showResult(r.id, r.key);
+    status('');
+    file = null; $('file').value = ''; $('title').value = '';
+    $('drop').textContent = 'PDF をここにドロップ、またはクリックして選ぶ（50MB まで）';
+    renderMine();
+  } catch (e) { status(e.message, true); }
+  $('go').disabled = false;
+};
+function showResult(id, key) {
+  const L = SlideShare.links(id, key);
+  $('rShare').textContent = L.share; $('rShareOpen').href = L.share;
+  $('rPres').textContent = L.presenter; $('rPresOpen').href = L.presenter;
+  $('rQr').innerHTML = SlideShare.qrSvg(L.share);
+  $('result').hidden = false;
+  $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+document.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+  await SlideShare.copy($(b.dataset.copy).textContent);
+  const t = b.textContent; b.textContent = 'コピーしました'; setTimeout(() => b.textContent = t, 1200);
+});
+
+function renderMine() {
+  const a = SlideShare.mine();
+  if (!a.length) { $('mine').textContent = 'まだありません。'; return; }
+  $('mine').innerHTML = a.map(x => {
+    const L = SlideShare.links(x.id, x.key), exp = x.expires ? new Date(x.expires) : null;
+    const dead = x.dead || (exp && exp < new Date());
+    return `<div class="mine-item${dead ? ' dead' : ''}" data-id="${esc(x.id)}">
+      <div class="t">${esc(x.title || '(無題)')}</div>
+      <div class="small">${dead ? '期限切れ・削除済み' : '期限 ' + SlideShare.fmtDate(exp)}</div>
+      <div class="row" style="margin-top:6px;">
+        ${dead ? '' : `<a class="btn" href="${esc(L.presenter)}" target="_blank">発表者として開く</a>
+        <button data-cp="${esc(L.share)}">共有リンクをコピー</button>`}
+        <button data-forget="${esc(x.id)}">控えを消す</button>
+      </div></div>`;
+  }).join('');
+  $('mine').querySelectorAll('[data-cp]').forEach(b => b.onclick = async () => {
+    await SlideShare.copy(b.dataset.cp); const t = b.textContent; b.textContent = 'コピーしました'; setTimeout(() => b.textContent = t, 1200);
+  });
+  $('mine').querySelectorAll('[data-forget]').forEach(b => b.onclick = () => {
+    if (!confirm('この端末の控え（発表者リンク）を消しますか？\nアップロードしたファイル自体は消えません。')) return;
+    SlideShare.forget(b.dataset.forget); renderMine();
+  });
+}
+// 期限を最新にする（延長・削除が別の端末で行われた場合）
+async function refreshMine() {
+  const a = SlideShare.mine();
+  await Promise.all(a.map(async x => {
+    try { x.expires = (await SlideShare.check(x.id, x.key)).toISOString(); x.dead = false; }
+    catch (e) { if (/期限切れ|正しくありません/.test(e.message)) x.dead = true; }
+  }));
+  try { localStorage.setItem('pdfslides_mine', JSON.stringify(a)); } catch (e) {}
+  renderMine();
+}
+renderMine();
+refreshMine();
+</script>
+</body>
+</html>
