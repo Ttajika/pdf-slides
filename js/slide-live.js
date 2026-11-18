@@ -33,6 +33,7 @@
        role,             // 任意（pdf-slides）: 'presenter' | 'viewer'（URL パラメータより優先）
        canPresent,       // 任意（pdf-slides）: () => true ならログインなしで配信できる
        viewerUrl,        // 任意（pdf-slides）: (withRec) => 受信用 URL（QR に出す。秘密鍵を含めないこと）
+       getPointerStyle,  // 任意（pdf-slides）: () => { s:'dot'|'hand'|'arrow'|'ring'|'spot', c:'#rrggbb' }（受信側にも送る）
        showShare,        // 任意（pdf-slides）: () => QR ボタンで開く画面（省略時は受信用 URL の画面）
 
      });
@@ -130,6 +131,8 @@
   function normStroke(s, c) {
     return { c: s.color, w: s.size, a: s.alpha || 1, p: s.points.map(pt => normPt(pt, c)) };
   }
+  // pdf-slides: ポインターの形と色（adapter.getPointerStyle。なければ null = 既定の赤い点）
+  function pointerStyle() { try { return adapter.getPointerStyle ? adapter.getPointerStyle() : null; } catch (e) { return null; } }
   function channelName() { return 'live:' + adapter.pageKey + ':' + code; }
   function send(payload) {
     if (!ch) return;
@@ -353,6 +356,7 @@
       bo,
       b: bl.map(x => normStroke(x, bc)),
       p: p ? normPt(p, c) : null,
+      ps: pointerStyle(),   // pdf-slides: ポインターの形と色
       m: getMedia(),
       h: r4(c.height / c.width),   // canvas の縦横比（viewer が同じ高さまで描画領域を広げる）
     };
@@ -362,6 +366,7 @@
     sent.brefs = bl.slice(); sent.blastLen = bl.length ? bl[bl.length - 1].points.length : 0;
     sent.boardOpen = bo;
     sent.ptr = msg.p;
+    sent.psj = JSON.stringify(msg.ps);
     sent.media = msg.m;
     sent.h = msg.h;
     sent.lastFull = Date.now();
@@ -427,8 +432,9 @@
     // ポインター
     const p = adapter.getPointer();
     const pn = p ? normPt(p, c) : null;
-    const changed = (!!pn !== !!sent.ptr) || (pn && (pn[0] !== sent.ptr[0] || pn[1] !== sent.ptr[1]));
-    if (changed) { sent.ptr = pn; send({ t: 'ptr', p: pn }); }
+    const ps = pointerStyle(), psj = JSON.stringify(ps);
+    const changed = (!!pn !== !!sent.ptr) || (pn && (pn[0] !== sent.ptr[0] || pn[1] !== sent.ptr[1])) || psj !== sent.psj;
+    if (changed) { sent.ptr = pn; sent.psj = psj; send({ t: 'ptr', p: pn, ps }); }
 
     // 動画・埋め込み
     const m = getMedia();
@@ -515,6 +521,7 @@
         if (m.i !== L.i) setScrollFollow(true);
         if (m.h) L.h[m.i] = m.h;
         L.i = m.i; L.s[m.i] = m.s; L.bo = m.bo; L.b[m.i] = m.b; L.p = m.p; L.ended = false;
+        if ('ps' in m) L.ps = m.ps;
         if ('m' in m) L.m = m.m;
         applySlide(); applyBoard(); applyMedia(); redrawLive(); redrawLiveBoard();
         setBadge();
@@ -545,7 +552,7 @@
       case 'dim':
         L.h[m.i] = m.h; redrawLive(); break;
       case 'ptr':
-        L.p = m.p; redrawLive(); if (m.p) followLive(L.i, m.p); break;
+        L.p = m.p; if ('ps' in m) L.ps = m.ps; redrawLive(); if (m.p) followLive(L.i, m.p); break;
       case 'board':
         L.bo = m.on; applyBoard(); break;
       case 'media':
@@ -702,7 +709,7 @@
     drawList(ctx, L.s[adapter.getCurrent()], W, adapter.lineScale ? adapter.lineScale(W) : 1);
     if (L.p && adapter.getCurrent() === L.i) {
       const x = L.p[0] * W, y = L.p[1] * W;
-      if (window.drawPointerMark) { window.drawPointerMark(ctx, x, y, 1); return; }
+      if (window.drawPointerMark) { window.drawPointerMark(ctx, x, y, 1, L.ps); return; }
       ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fillStyle = 'rgba(233,69,96,0.7)'; ctx.fill();
       ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
     }

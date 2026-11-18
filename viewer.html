@@ -45,14 +45,26 @@ html, body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .nav-sel option { color:#000; }
 .nav-btn.on { background:var(--accent); border-color:var(--accent); }
 #pageInfo { font-size:13px; font-variant-numeric:tabular-nums; min-width:5.5em; text-align:center; }
-#drawbar { position:fixed; top:54px; left:12px; z-index:90; display:none; flex-wrap:wrap; gap:5px; align-items:center;
-  background:rgba(26,26,46,.94); padding:6px 8px; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.2); }
+.topbar a.home .ic, .nav-btn .ic { width:16px; height:16px; }
+#drawbar { position:fixed; top:54px; left:12px; z-index:90; display:none; flex-wrap:wrap; gap:6px 10px; align-items:center;
+  max-width:calc(100vw - 24px); background:rgba(26,26,46,.94); padding:6px 8px; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.2); }
 #drawbar.show { display:flex; }
-#drawbar button { font:inherit; font-size:13px; background:rgba(255,255,255,.1); color:#fff;
-  border:1px solid rgba(255,255,255,.25); border-radius:6px; padding:4px 8px; cursor:pointer; }
+#drawbar .grp { display:flex; gap:5px; align-items:center; }
+#drawbar .grp + .grp { padding-left:10px; border-left:1px solid rgba(255,255,255,.18); }
+#drawbar button { font:inherit; font-size:13px; background:rgba(255,255,255,.1); color:#fff; line-height:0;
+  border:1px solid rgba(255,255,255,.25); border-radius:6px; padding:6px 8px; cursor:pointer; }
+#drawbar button .ic { width:17px; height:17px; }
 #drawbar button.on { background:#fff; color:var(--bar); }
-.sw { width:20px; height:20px; padding:0 !important; border-radius:50% !important; border:2px solid rgba(255,255,255,.4) !important; }
+#ptrShapes { display:none !important; }
+#drawbar.ptr #ptrShapes { display:flex !important; }
+#drawbar.ptr #penActs { display:none; }
+.sw { width:22px; height:22px; padding:0 !important; border-radius:50% !important; border:2px solid rgba(255,255,255,.4) !important; cursor:pointer; }
 .sw.on { border-color:#fff !important; outline:2px solid #fff; }
+.sw.custom { position:relative; overflow:hidden; display:inline-block;
+  background:conic-gradient(#ef4444,#f59e0b,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ec4899,#ef4444); }
+.sw.custom input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0; }
+#boardHead button { line-height:0; }
+#boardHead button .ic { width:15px; height:15px; }
 #stageArea { position:absolute; top:46px; left:0; right:0; bottom:0; }
 #stage { position:absolute; background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.15); }
 #stage canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
@@ -106,31 +118,66 @@ body.drawing #stage { touch-action:none; }
 </style>
 </head>
 <body>
+<!-- 線画アイコン（Lucide 由来の形。currentColor で描く）-->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-highlight" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-board" viewBox="0 0 24 24"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-full" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
+  <symbol id="i-p-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="i-p-hand" viewBox="0 0 24 24"><path d="M22 14a8 8 0 0 1-8 8"/><path d="M18 11v-1a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M14 10V9a2 2 0 0 0-2-2 2 2 0 0 0-2 2v1"/><path d="M10 9.5V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v10"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+  <symbol id="i-p-arrow" viewBox="0 0 24 24"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.12 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.12a.5.5 0 0 1-.95.06z"/></symbol>
+  <symbol id="i-p-ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></symbol>
+  <symbol id="i-p-spot" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2" fill="currentColor" fill-opacity=".35"/><circle cx="12" cy="12" r="5" fill="#fff" stroke="none"/></symbol>
+</svg>
 <div class="topbar">
-  <a class="home" href="./" title="一覧へ">⌂</a>
+  <a class="home" href="./" title="一覧へ"><svg class="ic"><use href="#i-home"/></svg></a>
   <div class="topbar-title" id="title">PDFスライド</div>
   <div class="topbar-nav">
     <select class="nav-sel" id="secSel" title="セクション" hidden></select>
-    <button class="nav-btn" id="prevBtn" title="前へ (←)">◀</button>
+    <button class="nav-btn" id="prevBtn" title="前へ (←)" aria-label="前へ"><svg class="ic"><use href="#i-left"/></svg></button>
     <span id="pageInfo">– / –</span>
-    <button class="nav-btn" id="nextBtn" title="次へ (→)">▶</button>
-    <button class="nav-btn" id="drawBtn" title="手書き (D)">✏️</button>
-    <button class="nav-btn" id="boardBtn" title="板書 (B)">板書</button>
-    <button class="nav-btn" id="dlBtn" title="PDF をダウンロード" hidden>⬇</button>
-    <button class="nav-btn" id="fsBtn" title="全画面 (F)" hidden>⛶</button>
+    <button class="nav-btn" id="nextBtn" title="次へ (→)" aria-label="次へ"><svg class="ic"><use href="#i-right"/></svg></button>
+    <button class="nav-btn" id="drawBtn" title="手書き (D)" aria-label="手書き"><svg class="ic"><use href="#i-pen"/></svg></button>
+    <button class="nav-btn" id="boardBtn" title="板書 (B)" aria-label="板書"><svg class="ic"><use href="#i-board"/></svg></button>
+    <button class="nav-btn" id="dlBtn" title="PDF をダウンロード" aria-label="ダウンロード" hidden><svg class="ic"><use href="#i-download"/></svg></button>
+    <button class="nav-btn" id="fsBtn" title="全画面 (F)" aria-label="全画面" hidden><svg class="ic"><use href="#i-full"/></svg></button>
   </div>
 </div>
 <div id="drawbar">
-  <button data-tool="pen" title="ペン (P)">✏️</button>
-  <button data-tool="highlight" title="蛍光ペン (H)">🖍</button>
-  <button data-tool="eraser" title="消しゴム (E)">🧽</button>
-  <button data-tool="pointer" title="ポインター (L)">🔴</button>
-  <button class="sw" data-c="#e94560" style="background:#e94560" title="赤"></button>
-  <button class="sw" data-c="#2563eb" style="background:#2563eb" title="青"></button>
-  <button class="sw" data-c="#1f2937" style="background:#1f2937" title="黒"></button>
-  <button class="sw" data-c="#16a34a" style="background:#16a34a" title="緑"></button>
-  <button id="undoBtn" title="取り消し (Ctrl/⌘+Z)">↶</button>
-  <button id="clearBtn" title="このページの書き込みを全消去">🗑</button>
+  <div class="grp">
+    <button data-tool="pen" title="ペン (P)" aria-label="ペン"><svg class="ic"><use href="#i-pen"/></svg></button>
+    <button data-tool="highlight" title="蛍光ペン (H)" aria-label="蛍光ペン"><svg class="ic"><use href="#i-highlight"/></svg></button>
+    <button data-tool="eraser" title="消しゴム (E)" aria-label="消しゴム"><svg class="ic"><use href="#i-eraser"/></svg></button>
+    <button data-tool="pointer" title="ポインター (L)" aria-label="ポインター"><svg class="ic"><use id="ptrToolIcon" href="#i-p-dot"/></svg></button>
+  </div>
+  <div class="grp" id="swatches">
+    <button class="sw" data-c="#e94560" style="background:#e94560" title="赤" aria-label="赤"></button>
+    <button class="sw" data-c="#2563eb" style="background:#2563eb" title="青" aria-label="青"></button>
+    <button class="sw" data-c="#1f2937" style="background:#1f2937" title="黒" aria-label="黒"></button>
+    <button class="sw" data-c="#16a34a" style="background:#16a34a" title="緑" aria-label="緑"></button>
+    <button class="sw" data-c="#f59e0b" style="background:#f59e0b" title="オレンジ" aria-label="オレンジ"></button>
+    <label class="sw custom" title="好きな色" aria-label="好きな色"><input type="color" id="customColor" value="#7c3aed"></label>
+  </div>
+  <div class="grp" id="ptrShapes">
+    <button data-ps="dot" title="レーザー" aria-label="レーザー"><svg class="ic"><use href="#i-p-dot"/></svg></button>
+    <button data-ps="hand" title="指差し" aria-label="指差し"><svg class="ic"><use href="#i-p-hand"/></svg></button>
+    <button data-ps="arrow" title="矢印" aria-label="矢印"><svg class="ic"><use href="#i-p-arrow"/></svg></button>
+    <button data-ps="ring" title="リング" aria-label="リング"><svg class="ic"><use href="#i-p-ring"/></svg></button>
+    <button data-ps="spot" title="スポットライト（周りを暗く）" aria-label="スポットライト"><svg class="ic"><use href="#i-p-spot"/></svg></button>
+  </div>
+  <div class="grp" id="penActs">
+    <button id="undoBtn" title="取り消し (Ctrl/⌘+Z)" aria-label="取り消し"><svg class="ic"><use href="#i-undo"/></svg></button>
+    <button id="clearBtn" title="このページの書き込みを全消去" aria-label="全消去"><svg class="ic"><use href="#i-trash"/></svg></button>
+  </div>
 </div>
 <main id="stageArea">
   <div id="stage" hidden><canvas id="pdfCanvas"></canvas><canvas id="drawCanvas"></canvas></div>
@@ -153,10 +200,10 @@ body.drawing #stage { touch-action:none; }
         <button class="sw" data-bc="#2563eb" style="background:#2563eb" title="青"></button>
         <button class="sw" data-bc="#1f2937" style="background:#1f2937" title="黒"></button>
         <button class="sw" data-bc="#16a34a" style="background:#16a34a" title="緑"></button>
-        <button id="bEraseBtn" title="消しゴム">🧽</button>
-        <button id="bUndoBtn" title="取り消し">↶</button>
-        <button id="bClearBtn" title="全消去">🗑</button>
-        <button id="bCloseBtn" title="閉じる (B / Esc)">✕</button>
+        <button id="bEraseBtn" title="消しゴム" aria-label="消しゴム"><svg class="ic"><use href="#i-eraser"/></svg></button>
+        <button id="bUndoBtn" title="取り消し" aria-label="取り消し"><svg class="ic"><use href="#i-undo"/></svg></button>
+        <button id="bClearBtn" title="全消去" aria-label="全消去"><svg class="ic"><use href="#i-trash"/></svg></button>
+        <button id="bCloseBtn" title="閉じる (B / Esc)" aria-label="閉じる"><svg class="ic"><use href="#i-x"/></svg></button>
       </div>
     </div>
     <div id="boardWrap"><canvas id="boardCanvas"></canvas></div>
@@ -229,6 +276,7 @@ async function openPdf(src, fileName, live) {
     getStrokes: () => strokes[current] || [],
     getBoardStrokes: () => boardStrokes[current] || [],
     getPointer: () => pointerPos,
+    getPointerStyle: ptrStyle,
     isBoardOpen: () => boardOpen,
     setBoardOpen: on => setBoard(!!on),
     getMedia: () => null, setMedia: () => {},
@@ -341,10 +389,43 @@ const nextSlide = () => showSlide(current + 1);
 const prevSlide = () => showSlide(current - 1);
 
 /* ── 描画（slide-live.js がこの 3 つを使う／包むのでグローバル関数のままにする）── */
-function drawPointerMark(ctx, x, y) {
-  const k = ctx.canvas.width / REF_W;
-  ctx.beginPath(); ctx.arc(x, y, 12 * k, 0, Math.PI * 2); ctx.fillStyle = 'rgba(233,69,96,0.7)'; ctx.fill();
-  ctx.beginPath(); ctx.arc(x, y, 5 * k, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
+// ポインター：st = { s: 'dot'|'hand'|'arrow'|'ring'|'spot', c: '#rrggbb' }（受信側でも同じ関数で描く）
+const P2D = typeof Path2D === 'function';
+const HAND = P2D && new Path2D('M6 15V4a2 2 0 0 1 4 0V9a2 2 0 0 1 4 0v1a2 2 0 0 1 4 0v1a2 2 0 0 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82Z');
+const HAND_LINES = P2D && new Path2D('M10 9v4.5M14 10v3.5M18 11v2.5');
+const ARROW = P2D && new Path2D('M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.12 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.12a.5.5 0 0 1-.95.06z');
+function rgba(hex, a) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); const n = m ? parseInt(m[1], 16) : 0xe94560;
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function drawPointerMark(ctx, x, y, _unused, st) {
+  const k = ctx.canvas.width / REF_W, s = (st && st.s) || 'dot', c = (st && st.c) || '#e94560';
+  ctx.save();
+  if (s === 'spot') {                       // 周りを暗くして、その位置だけ明るく
+    const r = 130 * k;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.globalCompositeOperation = 'destination-out';
+    const g = ctx.createRadialGradient(x, y, r * 0.75, x, y, r);
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  } else if ((s === 'hand' || s === 'arrow') && P2D) {
+    const z = (s === 'hand' ? 60 : 46) * k / 24;          // アイコンは 24 単位。指先・矢の先を (x, y) に合わせる
+    ctx.translate(x - (s === 'hand' ? 8 : 4.3) * z, y - (s === 'hand' ? 2 : 4.3) * z); ctx.scale(z, z);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 4 * k; ctx.shadowOffsetY = 1 * k;
+    ctx.fillStyle = c; ctx.fill(s === 'hand' ? HAND : ARROW);
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(s === 'hand' ? HAND : ARROW);
+    if (s === 'hand') { ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.stroke(HAND_LINES); }
+  } else if (s === 'ring') {
+    ctx.beginPath(); ctx.arc(x, y, 24 * k, 0, Math.PI * 2);
+    ctx.lineWidth = 7 * k; ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.stroke();
+    ctx.lineWidth = 4 * k; ctx.strokeStyle = c; ctx.stroke();
+  } else {                                   // レーザー（点）
+    ctx.beginPath(); ctx.arc(x, y, 12 * k, 0, Math.PI * 2); ctx.fillStyle = rgba(c, 0.7); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 5 * k, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
+  }
+  ctx.restore();
 }
 function paint(ctx, list, k) {
   for (const s of list || []) {
@@ -361,7 +442,7 @@ function redrawStrokes() {
   const c = $('drawCanvas'), ctx = c.getContext('2d');
   ctx.clearRect(0, 0, c.width, c.height);
   paint(ctx, strokes[current], c.width / REF_W);
-  if (pointerPos) drawPointerMark(ctx, pointerPos.x, pointerPos.y);
+  if (pointerPos) drawPointerMark(ctx, pointerPos.x, pointerPos.y, 1, ptrStyle());
 }
 function redrawBoardStrokes() {
   const c = $('boardCanvas'), ctx = c.getContext('2d');
@@ -385,9 +466,33 @@ function setDraw(on) {
 function setTool(t) {
   drawTool = t;
   document.querySelectorAll('#drawbar [data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+  $('drawbar').classList.toggle('ptr', t === 'pointer');   // ポインターのときは形の選択を出す
+  markSwatches();
   if (t !== 'pointer' && pointerPos) { pointerPos = null; redrawStrokes(); }
 }
-function setColor(c) { drawColor = c; document.querySelectorAll('#drawbar .sw').forEach(b => b.classList.toggle('on', b.dataset.c === c)); }
+// 色の選択はペン／蛍光ペンとポインターで別々に覚える（この端末に保存）
+let ptrShape = ls.get('pdfslides_ptrShape') || 'dot', ptrColor = ls.get('pdfslides_ptrColor') || '#e94560';
+const ptrStyle = () => ({ s: ptrShape, c: ptrColor });
+const curColor = () => drawTool === 'pointer' ? ptrColor : drawColor;
+function markSwatches() {
+  const c = curColor(); let hit = false;
+  document.querySelectorAll('#drawbar .sw[data-c]').forEach(b => { const on = b.dataset.c === c; b.classList.toggle('on', on); hit = hit || on; });
+  const cu = document.querySelector('#drawbar .sw.custom');
+  cu.classList.toggle('on', !hit); if (!hit) { cu.style.background = c; $('customColor').value = c; }
+  else cu.style.background = '';
+}
+function setColor(c) {
+  if (!c) return;
+  if (drawTool === 'pointer') { ptrColor = c; ls.set('pdfslides_ptrColor', c); if (pointerPos) redrawStrokes(); }
+  else { drawColor = c; ls.set('pdfslides_penColor', c); if (drawTool === 'eraser') setTool('pen'); }
+  markSwatches();
+}
+function setPtrShape(sh) {
+  ptrShape = sh; ls.set('pdfslides_ptrShape', sh);
+  document.querySelectorAll('#ptrShapes [data-ps]').forEach(b => b.classList.toggle('on', b.dataset.ps === sh));
+  $('ptrToolIcon').setAttribute('href', '#i-p-' + sh);
+  if (pointerPos) redrawStrokes();
+}
 function eraseIn(store, pt, r, redraw) {
   const arr = store[current] || [];
   const keep = arr.filter(s => !s.points.some(p => Math.hypot(p.x - pt.x, p.y - pt.y) < r));
@@ -521,10 +626,13 @@ $('drawBtn').onclick = () => setDraw(!drawMode);
 $('boardBtn').onclick = () => setBoard(!boardOpen);
 $('dlBtn').onclick = downloadPdf;
 document.querySelectorAll('#drawbar [data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
-document.querySelectorAll('#drawbar .sw').forEach(b => b.onclick = () => setColor(b.dataset.c));
+document.querySelectorAll('#drawbar .sw[data-c]').forEach(b => b.onclick = () => setColor(b.dataset.c));
+$('customColor').addEventListener('input', e => setColor(e.target.value));
+document.querySelectorAll('#ptrShapes [data-ps]').forEach(b => b.onclick = () => setPtrShape(b.dataset.ps));
 $('undoBtn').onclick = undoStroke;
 $('clearBtn').onclick = clearStrokes;
-setTool('pen'); setColor('#e94560'); setBoardColor('#1f2937');
+drawColor = ls.get('pdfslides_penColor') || '#e94560';
+setTool('pen'); setPtrShape(ptrShape); setBoardColor('#1f2937');
 const fsEl = document.documentElement;
 if (fsEl.requestFullscreen && document.fullscreenEnabled) {
   $('fsBtn').hidden = false;
