@@ -40,7 +40,7 @@ footer a { color:inherit; }
   <div class="ctrl">
     <label>配信コード <input id="code" value="1" inputmode="numeric" autocomplete="off"></label>
     <div class="hint">iPad で「配信」を開いてログインし、ボタンで配信を始めます。PC で同じコードの「受信」を開くと、
-      ページ送り・手書き・ポインター・板書が届きます。録画する PC は「受信＋録画」を開きます。</div>
+      ページ送り・手書き・ポインター・板書が届きます。</div>
   </div>
   <div id="list"></div>
   <div id="msg">読み込み中…</div>
@@ -82,7 +82,6 @@ function render(files) {
       <div class="links">
         <a class="pres" href="${esc(q(f, { presenter: 1, live: code }))}">配信（iPad）</a>
         <a class="view" href="${esc(q(f, { live: code }))}">受信（PC）</a>
-        <a href="${esc(q(f, { live: code, rec: 1 }))}">受信＋録画</a>
         <a href="${esc(q(f, {}))}">ふつうに開く</a>
       </div></div>`;
   }).join('');

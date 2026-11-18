@@ -594,9 +594,6 @@ function injectSharePanel() {
     <div class="sh-url" id="shUrl"></div>
     <div class="sh-btns"><button id="shCopy">コピー</button></div>
     <div class="sh-qr" id="shQr"></div>
-    <div class="sh-label">録画する PC 用（録画ボタン付き）</div>
-    <div class="sh-url" id="shRec"></div>
-    <div class="sh-btns"><button id="shCopyRec">コピー</button></div>
     <div class="sh-label">有効期限：<strong id="shExp"></strong></div>
     <div class="sh-btns"><button id="shExtend">今から 30 日に延長</button></div>
     <div class="sh-label">PDF を差し替える（共有リンクはそのまま。開いている人は再読み込みで新しい版になります）</div>
@@ -610,7 +607,6 @@ function injectSharePanel() {
   const msg = (t, err) => { $('shMsg').textContent = t || ''; $('shMsg').style.color = err ? '#dc2626' : ''; };
   $('shClose').onclick = () => ov.classList.remove('open');
   $('shCopy').onclick = async () => { await SlideShare.copy(SlideShare.links(share.id).share); msg('コピーしました'); };
-  $('shCopyRec').onclick = async () => { await SlideShare.copy(SlideShare.links(share.id).record); msg('コピーしました'); };
   $('shExtend').onclick = async () => {
     try { share.expires = await SlideShare.extend(share.id, share.key); fillSharePanel(); msg('延長しました');
       SlideShare.remember({ id: share.id, key: share.key, title: share.title, expires: share.expires }); }
@@ -634,7 +630,6 @@ function injectSharePanel() {
 function fillSharePanel() {
   const url = SlideShare.links(share.id).share;
   $('shUrl').textContent = url;
-  $('shRec').textContent = SlideShare.links(share.id).record;
   $('shQr').innerHTML = SlideShare.qrSvg(url);
   $('shExp').textContent = SlideShare.fmtDate(share.expires);
 }

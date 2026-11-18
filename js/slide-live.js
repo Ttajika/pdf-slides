@@ -485,10 +485,10 @@
     }
     ov.innerHTML = `
       <div class="sl-modal">
-        <h3><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em" aria-hidden="true"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg> 受信用 URL（学生・録画 PC 向け）</h3>
+        <h3><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em" aria-hidden="true"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg> 参加者用 URL</h3>
         <div class="url">${url}</div>
         <div class="qr">${qrHtml}</div>
-        <div class="sl-note">録画 PC では末尾に <code>&amp;rec=1</code> を付けると録画ボタンが出ます。</div>
+        <div class="sl-note">このページを開くと、配信中のページ送り・書き込みに追従します。</div>
         <div class="sl-btns"><button onclick="document.getElementById('slUrlOverlay').classList.remove('open')">閉じる</button></div>
       </div>`;
     ov.classList.add('open');

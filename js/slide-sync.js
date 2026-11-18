@@ -338,6 +338,8 @@
       const n = document.querySelector('#ssUserView .ss-msg'); if (n) n.textContent = '配信できます。書き込みはこの端末にだけ保存されます。';
       const b = document.getElementById('ssSyncNowBtn'); if (b) b.style.display = 'none';
       const ns = document.querySelector('#ssLoginView .ss-note'); if (ns) ns.style.display = 'none';
+      const il = document.querySelector('label[for="ssId"]'); if (il) il.textContent = 'ID';
+      const ii = document.getElementById('ssId'); if (ii) ii.placeholder = '';
       const bt = document.getElementById('ssAuthBtn'); if (bt) bt.title = 'ログイン（配信用）';
     }
     if (!isConfigured() || !window.supabase) return;  // 未設定ならボタンだけ出して終了
