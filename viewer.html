@@ -97,6 +97,7 @@ body.drawing #stage { touch-action:none; }
 .sh-btns button, .sh-file { flex:1; font:inherit; font-size:14px; padding:8px 12px; border-radius:8px; cursor:pointer; text-align:center;
   border:1px solid #d1d5db; background:#f3f4f6; color:#1f2937; }
 .sh-btns button.danger { background:#fff; color:#dc2626; border-color:#fca5a5; }
+.sh-check { display:flex; gap:8px; align-items:center; margin-top:12px; font-size:13.5px; cursor:pointer; }
 .sh-msg { margin-top:8px; font-size:13px; min-height:1.3em; }
 @media (max-width: 760px) {
   .topbar-title { display:none; }
@@ -115,6 +116,7 @@ body.drawing #stage { touch-action:none; }
     <button class="nav-btn" id="nextBtn" title="次へ (→)">▶</button>
     <button class="nav-btn" id="drawBtn" title="手書き (D)">✏️</button>
     <button class="nav-btn" id="boardBtn" title="板書 (B)">板書</button>
+    <button class="nav-btn" id="dlBtn" title="PDF をダウンロード" hidden>⬇</button>
     <button class="nav-btn" id="fsBtn" title="全画面 (F)" hidden>⛶</button>
   </div>
 </div>
@@ -198,6 +200,7 @@ async function openPdf(src, fileName, live) {
   }
   N = pdf.numPages;
   deck = deckName(fileName);
+  dlName = fileName.replace(/[\\/:*?"<>|]+/g, '_');
   document.title = fileName.replace(/\.pdf$/i, '');
   $('title').textContent = document.title;
   STORAGE_KEY = (live && live.storageKey) || 'pdfslides_' + deck;
@@ -233,6 +236,23 @@ async function openPdf(src, fileName, live) {
     boardLineScale: w => w / BREF_W,
     recName: deck,
   }, extra));
+}
+
+// ダウンロード：読み込み済みの PDF をそのまま保存（別オリジンでも a[download] が効くよう Blob にする）
+let dlName = 'slides.pdf';
+function setDownloadable(on) { $('dlBtn').hidden = !on; }
+async function downloadPdf() {
+  if (!pdf) return;
+  loading('PDF を準備中…');
+  try {
+    const data = await pdf.getData();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
+    a.download = dlName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) { alert('ダウンロードできませんでした：' + (e && e.message || e)); }
+  loading('');
 }
 
 // PDF だけ読み直す（差し替え後。配信・書き込みはそのまま）
@@ -499,6 +519,7 @@ $('prevBtn').onclick = prevSlide;
 $('nextBtn').onclick = nextSlide;
 $('drawBtn').onclick = () => setDraw(!drawMode);
 $('boardBtn').onclick = () => setBoard(!boardOpen);
+$('dlBtn').onclick = downloadPdf;
 document.querySelectorAll('#drawbar [data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
 document.querySelectorAll('#drawbar .sw').forEach(b => b.onclick = () => setColor(b.dataset.c));
 $('undoBtn').onclick = undoStroke;
@@ -564,13 +585,14 @@ async function openShared(id, key) {
     alert(e.message + '\n閲覧用として開きます。');
   }
   if (!info) { loading(''); showGone('このリンクは期限切れか、削除されています。'); return; }
-  share = { id, key: isPresenter ? key : null, title: info.title, expires: info.expires };
+  share = { id, key: isPresenter ? key : null, title: info.title, expires: info.expires, allowDownload: info.allowDownload };
   if (isPresenter) {
     // この端末に発表者リンクの控えを残す（upload.html の一覧に出る）
     SlideShare.remember({ id, key, title: info.title, expires: info.expires });
     injectSharePanel();
   }
   const L = SlideShare.links(id, null);
+  setDownloadable(isPresenter || info.allowDownload);
   await openPdf(info.url, (info.title || 'slides') + '.pdf', {
     storageKey: 'pdfslides_s_' + id,
     role: isPresenter ? 'presenter' : 'viewer',
@@ -594,6 +616,7 @@ function injectSharePanel() {
     <div class="sh-url" id="shUrl"></div>
     <div class="sh-btns"><button id="shCopy">コピー</button></div>
     <div class="sh-qr" id="shQr"></div>
+    <label class="sh-check"><input type="checkbox" id="shDl"> 参加者に PDF のダウンロードを許可する</label>
     <div class="sh-label">有効期限：<strong id="shExp"></strong></div>
     <div class="sh-btns"><button id="shExtend">今から 30 日に延長</button></div>
     <div class="sh-label">PDF を差し替える（共有リンクはそのまま。開いている人は再読み込みで新しい版になります）</div>
@@ -607,6 +630,12 @@ function injectSharePanel() {
   const msg = (t, err) => { $('shMsg').textContent = t || ''; $('shMsg').style.color = err ? '#dc2626' : ''; };
   $('shClose').onclick = () => ov.classList.remove('open');
   $('shCopy').onclick = async () => { await SlideShare.copy(SlideShare.links(share.id).share); msg('コピーしました'); };
+  $('shDl').onchange = async e => {
+    const on = e.target.checked;
+    try { await SlideShare.setDownload(share.id, share.key, on); share.allowDownload = on;
+      msg(on ? '参加者がダウンロードできるようにしました' : '参加者のダウンロードボタンを隠しました（開いている人は再読み込みで反映）'); }
+    catch (err) { e.target.checked = !on; msg(err.message, true); }
+  };
   $('shExtend').onclick = async () => {
     try { share.expires = await SlideShare.extend(share.id, share.key); fillSharePanel(); msg('延長しました');
       SlideShare.remember({ id: share.id, key: share.key, title: share.title, expires: share.expires }); }
@@ -632,6 +661,7 @@ function fillSharePanel() {
   $('shUrl').textContent = url;
   $('shQr').innerHTML = SlideShare.qrSvg(url);
   $('shExp').textContent = SlideShare.fmtDate(share.expires);
+  $('shDl').checked = share.allowDownload !== false;
 }
 function openSharePanel() { fillSharePanel(); $('shMsg').textContent = ''; $('shareOverlay').classList.add('open'); }
 
@@ -648,6 +678,7 @@ function openSharePanel() { fillSharePanel(); $('shMsg').textContent = ''; $('sh
   if (file) {
     if (/^[a-z]+:|^\/\/|\.\./i.test(file)) { alert('このリポジトリ内の PDF だけ開けます'); $('opener').hidden = false; return; }
     syncInit(params.has('presenter'));
+    setDownloadable(true);
     openPdf(file, file.split('/').pop(), {}); return;
   }
   const op = $('opener'); op.hidden = false;

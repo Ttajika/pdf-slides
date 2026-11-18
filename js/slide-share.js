@@ -10,6 +10,7 @@
      SlideShare.check(id, key)                 → 期限 Date（鍵が違えば例外）
      SlideShare.extend(id, key)                → 新しい期限 Date（今から 30 日）
      SlideShare.remove(id, key)
+     SlideShare.setDownload(id, key, on)       参加者のダウンロードボタンを出す / 出さない
      SlideShare.links(id, key)                 → { share, presenter, record }
      SlideShare.mine() / remember(...) / forget(id)   この端末でアップロードしたものの控え
    ════════════════════════════════════════════════════════════════════════ */
@@ -73,10 +74,12 @@
     const r = rows && rows[0];
     if (!r || !r.path) return null;
     const url = client().storage.from(BUCKET).getPublicUrl(r.path).data.publicUrl;
-    return { title: r.title, url, version: r.version, updated: new Date(r.updated_at), expires: new Date(r.expires_at) };
+    return { title: r.title, url, version: r.version, updated: new Date(r.updated_at), expires: new Date(r.expires_at),
+             allowDownload: r.allow_download !== false };
   };
   SH.check = async (id, key) => new Date(await rpc('slide_check', { p_id: id, p_key: key }));
   SH.extend = async (id, key) => new Date(await rpc('slide_extend', { p_id: id, p_key: key }));
+  SH.setDownload = async (id, key, on) => rpc('slide_set_download', { p_id: id, p_key: key, p_on: !!on });
   SH.remove = async (id, key) => { await rpc('slide_delete', { p_id: id, p_key: key }); };
 
   SH.links = function (id, key) {

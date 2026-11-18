@@ -11,6 +11,7 @@
 --    ・slide_uploads に 1 件 = 1 つの共有リンク。expires_at（既定 30 日）を過ぎると slide_get が何も返さない
 --    ・アップロードは「パスワード → slide_create」で発行された、15 分だけ有効な 1 つのパスにだけ書ける
 --    ・差し替え・延長・削除は発表者リンクの秘密鍵（edit key、DB にはハッシュだけ保存）で行う
+--    ・参加者へのダウンロードボタンは発表者が切り替えられる（allow_download。公開 URL なので完全には防げない）
 --    ・期限切れ・差し替え前の古いファイルは、末尾の「掃除」の SQL で消す（たまにでよい）
 -- ════════════════════════════════════════════════════════════════════════
 
@@ -36,6 +37,8 @@ create table if not exists public.slide_uploads (
   expires_at    timestamptz not null default now() + interval '30 days'
 );
 alter table public.slide_uploads enable row level security;  -- 直接は読めない。下の関数経由のみ
+-- 参加者に PDF のダウンロードボタンを出すか（あとから追加した列）
+alter table public.slide_uploads add column if not exists allow_download boolean not null default true;
 
 -- ── バケット（公開・50MB・PDF のみ）──────────────────────────────────────
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -131,11 +134,12 @@ begin
   return r.version + 1;
 end $$;
 
--- 閲覧：期限内なら題名・ファイルのパスなどを返す
-create or replace function public.slide_get(p_id text)
-returns table (title text, path text, version int, updated_at timestamptz, expires_at timestamptz)
+-- 閲覧：期限内なら題名・ファイルのパスなどを返す（返す列を増やしたので作り直す）
+drop function if exists public.slide_get(text);
+create function public.slide_get(p_id text)
+returns table (title text, path text, version int, updated_at timestamptz, expires_at timestamptz, allow_download boolean)
 language sql stable security definer set search_path = '' as $$
-  select u.title, u.current_path, u.version, u.updated_at, u.expires_at
+  select u.title, u.current_path, u.version, u.updated_at, u.expires_at, u.allow_download
     from public.slide_uploads u
    where u.id = p_id and u.expires_at > now() and u.current_path is not null;
 $$;
@@ -159,6 +163,17 @@ begin
   r := public.slide_auth(p_id, p_key);
   update public.slide_uploads set expires_at = v where id = r.id;
   return v;
+end $$;
+
+-- 参加者のダウンロードを許可する / しない
+create or replace function public.slide_set_download(p_id text, p_key text, p_on boolean)
+returns boolean
+language plpgsql security definer set search_path = '' as $$
+declare r public.slide_uploads;
+begin
+  r := public.slide_auth(p_id, p_key);
+  update public.slide_uploads set allow_download = coalesce(p_on, true) where id = r.id;
+  return coalesce(p_on, true);
 end $$;
 
 -- 削除（すぐに期限切れにする。ファイルは次の掃除で消える）
@@ -185,11 +200,11 @@ revoke all on function public.slide_rand(int), public.slide_hash(text), public.s
   public.slide_set_password(text), public.slide_can_write(text), public.slide_can_delete(text),
   public.slide_create(text, text), public.slide_begin_replace(text, text),
   public.slide_commit(text, text, text), public.slide_get(text), public.slide_check(text, text),
-  public.slide_extend(text, text), public.slide_delete(text, text)
+  public.slide_extend(text, text), public.slide_delete(text, text), public.slide_set_download(text, text, boolean)
   from public, anon, authenticated;
 grant execute on function public.slide_create(text, text), public.slide_begin_replace(text, text),
   public.slide_commit(text, text, text), public.slide_get(text), public.slide_check(text, text),
-  public.slide_extend(text, text), public.slide_delete(text, text),
+  public.slide_extend(text, text), public.slide_delete(text, text), public.slide_set_download(text, text, boolean),
   public.slide_can_write(text)   -- ポリシーの中で呼ばれる（呼び出し元の権限で実行されるので必要）
   to anon, authenticated;
 
