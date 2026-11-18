@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDFスライド</title>
+<!--
+  index.html — pdf/ に置いた PDF の一覧。GitHub API でフォルダの中身を読む（サブフォルダも 1 段まで）。
+  GitHub Pages 以外（ローカルなど）で開いたときは、下の FALLBACK_REPO を見に行く。
+-->
+<style>
+:root { --accent:#e94560; --bar:#1a1a2e; --bg:#eef0f3; --ink:#1f2937; --muted:#6b7280; --card:#fff; --line:#e5e7eb; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#111827; --ink:#e5e7eb; --muted:#9ca3af; --card:#1f2937; --line:#374151; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif; }
+header { background:var(--bar); color:#fff; padding:14px 16px; }
+header h1 { margin:0; font-size:18px; }
+main { max-width:860px; margin:0 auto; padding:16px; }
+.ctrl { display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:var(--card); border:1px solid var(--line);
+  border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:14px; }
+.ctrl input { font:inherit; width:7em; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; }
+.ctrl .hint { color:var(--muted); font-size:12.5px; flex-basis:100%; line-height:1.6; }
+.item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+.item .name { font-weight:700; margin-bottom:8px; word-break:break-all; }
+.item .dir { font-weight:400; color:var(--muted); font-size:12.5px; margin-right:6px; }
+.links { display:flex; flex-wrap:wrap; gap:6px; }
+.links a { font-size:13px; text-decoration:none; padding:5px 10px; border-radius:6px; border:1px solid var(--line); color:inherit; }
+.links a.pres { background:var(--accent); border-color:var(--accent); color:#fff; }
+.links a.view { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
+#msg { color:var(--muted); font-size:14px; line-height:1.7; }
+footer { max-width:860px; margin:0 auto; padding:8px 16px 32px; font-size:12.5px; color:var(--muted); }
+footer a { color:inherit; }
+</style>
+</head>
+<body>
+<header><h1>PDFスライド</h1></header>
+<main>
+  <div class="ctrl">
+    <label>配信コード <input id="code" value="1" inputmode="numeric" autocomplete="off"></label>
+    <div class="hint">iPad で「配信」を開いてログインし、ボタンで配信を始めます。PC で同じコードの「受信」を開くと、
+      ページ送り・手書き・ポインター・板書が届きます。録画する PC は「受信＋録画」を開きます。</div>
+  </div>
+  <div id="list"></div>
+  <div id="msg">読み込み中…</div>
+</main>
+<footer><a href="viewer.html">手元の PDF を開く（確認用）</a></footer>
+<script>
+'use strict';
+const FALLBACK_REPO = { owner: 'Ttajika', repo: 'pdf-slides', branch: 'main' };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+function repoInfo() {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/i);
+  if (!m) return FALLBACK_REPO;
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  return { owner: m[1], repo: seg || (m[1] + '.github.io') };
+}
+async function listDir(info, path, depth) {
+  const url = `https://api.github.com/repos/${info.owner}/${info.repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`
+    + (info.branch ? `?ref=${info.branch}` : '');
+  const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error(r.status === 403 ? 'GitHub API の回数制限に達しました。しばらくしてから再読み込みしてください。' : 'HTTP ' + r.status);
+  const out = [];
+  for (const it of await r.json()) {
+    if (it.type === 'file' && /\.pdf$/i.test(it.name)) out.push(it.path);
+    else if (it.type === 'dir' && depth > 0) out.push(...await listDir(info, it.path, depth - 1));
+  }
+  return out;
+}
+function render(files) {
+  const code = $('code').value.trim() || '1';
+  const q = (f, extra) => 'viewer.html?' + new URLSearchParams(Object.assign({ file: f }, extra)).toString();
+  $('list').innerHTML = files.map(f => {
+    const parts = f.replace(/^pdf\//, '').split('/'), name = parts.pop().replace(/\.pdf$/i, '');
+    return `<div class="item"><div class="name">${parts.length ? `<span class="dir">${esc(parts.join(' / '))} /</span>` : ''}${esc(name)}</div>
+      <div class="links">
+        <a class="pres" href="${esc(q(f, { presenter: 1, live: code }))}">配信（iPad）</a>
+        <a class="view" href="${esc(q(f, { live: code }))}">受信（PC）</a>
+        <a href="${esc(q(f, { live: code, rec: 1 }))}">受信＋録画</a>
+        <a href="${esc(q(f, {}))}">ふつうに開く</a>
+      </div></div>`;
+  }).join('');
+}
+(async function () {
+  $('code').value = lsGet('pdfslides_code') || '1';
+  let files = [];
+  try {
+    files = (await listDir(repoInfo(), 'pdf', 1)).sort((a, b) => a.localeCompare(b, 'ja'));
+    $('msg').textContent = files.length ? '' : 'pdf/ フォルダに PDF がありません。GitHub の pdf/ に PDF を追加してください。';
+  } catch (e) {
+    $('msg').textContent = '一覧を読み込めませんでした：' + e.message;
+  }
+  render(files);
+  $('code').addEventListener('input', () => { lsSet('pdfslides_code', $('code').value.trim()); render(files); });
+})();
+</script>
+</body>
+</html>
